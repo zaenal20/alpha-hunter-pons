@@ -45,6 +45,15 @@ export async function startScanner(notifyFn) {
       const config = await getAllConfig();
       const thresholdPct = parseFloat(config.bonding_curve_pct || '80');
 
+      // Pause scanner if max positions reached
+      const db = getPrisma();
+      const openCount = await db.position.count({ where: { status: 'open' } });
+      const maxPositions = parseInt(config.max_open_positions || '5');
+      if (openCount >= maxPositions) {
+        // Skip API call, retry next poll
+        return;
+      }
+
       const launches = await fetchActiveLaunches();
 
       for (const launch of launches) {
