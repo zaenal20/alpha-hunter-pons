@@ -3,7 +3,7 @@ import { buyToken } from '../trader/buy.js';
 import { getClient, FACTORY_V2, FACTORY_V2_ABI } from '../core/chain.js';
 import { parseAbi } from 'viem';
 import { logInfo, logWarn, logError } from '../utils/logger.js';
-import { getAllConfig } from '../db/index.js';
+import { getAllConfig, getPrisma } from '../db/index.js';
 
 let running = false;
 let pollTimer = null;
@@ -61,6 +61,18 @@ export async function startScanner(notifyFn) {
         }
 
         seenTokens.add(token);
+
+        // No rebuy filter
+        if (config.no_rebuy === 'true') {
+          const db = getPrisma();
+          const existing = await db.position.findFirst({
+            where: { token },
+          });
+          if (existing) {
+            await logWarn(`${launch.symbol} already traded (pos #${existing.id}), skipping`);
+            continue;
+          }
+        }
 
         await logInfo(`${launch.symbol} hit ${progress.toFixed(1)}% bonding, running filters...`);
 

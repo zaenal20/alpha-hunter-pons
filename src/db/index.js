@@ -22,6 +22,7 @@ const DEFAULTS = {
   max_open_positions: '5',
   max_position_minutes: '30',
   only_eth_paired: 'true',
+  no_rebuy: 'true',
 };
 
 export async function initDefaults() {
