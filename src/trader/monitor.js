@@ -3,23 +3,20 @@ import { getCurrentPrice } from '../core/trade.js';
 import { sellToken } from './sell.js';
 import { logInfo, logError } from '../utils/logger.js';
 
-const activeMonitors = new Map(); // positionId -> timer
+const activeMonitors = new Map();
 
-/**
- * Start monitoring price for a position
- */
 export async function startPriceMonitor(positionId, token, curve) {
   if (activeMonitors.has(positionId)) return;
 
-  const db = getPrisma();
-  const trailingPct = parseFloat((await getConfig('trailing_stoploss_pct')) || '15');
-  const pollMs = parseInt((await getConfig('monitor_poll_ms')) || '3000');
-  const maxMinutes = parseFloat((await getConfig('max_position_minutes')) || '30');
-
-  await logInfo(`Starting price monitor for position #${positionId} (max ${maxMinutes}m)`);
+  await logInfo(`Starting price monitor for position #${positionId}`);
 
   const poll = async () => {
     try {
+      // Read config fresh every poll
+      const trailingPct = parseFloat((await getConfig('trailing_stoploss_pct')) || '15');
+      const maxMinutes = parseFloat((await getConfig('max_position_minutes')) || '30');
+
+      const db = getPrisma();
       const position = await db.position.findUnique({ where: { id: positionId } });
       if (!position || position.status !== 'open') {
         stopPriceMonitor(positionId);
@@ -69,16 +66,15 @@ export async function startPriceMonitor(positionId, token, curve) {
     }
 
     if (activeMonitors.has(positionId)) {
+      const pollMs = parseInt((await getConfig('monitor_poll_ms')) || '3000');
       activeMonitors.set(positionId, setTimeout(poll, pollMs));
     }
   };
 
+  const pollMs = parseInt((await getConfig('monitor_poll_ms')) || '3000');
   activeMonitors.set(positionId, setTimeout(poll, pollMs));
 }
 
-/**
- * Stop monitoring a position
- */
 export function stopPriceMonitor(positionId) {
   const timer = activeMonitors.get(positionId);
   if (timer) {
@@ -88,9 +84,6 @@ export function stopPriceMonitor(positionId) {
   }
 }
 
-/**
- * Resume monitoring for all open positions (on startup)
- */
 export async function resumeAllMonitors() {
   const db = getPrisma();
   const openPositions = await db.position.findMany({ where: { status: 'open' } });

@@ -3,6 +3,7 @@ import { buyToken } from '../trader/buy.js';
 import { getClient, FACTORY_V2, FACTORY_V2_ABI } from '../core/chain.js';
 import { parseAbi } from 'viem';
 import { logInfo, logWarn, logError } from '../utils/logger.js';
+import { getAllConfig } from '../db/index.js';
 
 let running = false;
 let pollTimer = null;
@@ -10,9 +11,6 @@ const seenTokens = new Set();
 
 const PONS_API = 'https://www.ponsfamily.com/api/pons-launches';
 
-/**
- * Fetch active launches from Pons API
- */
 async function fetchActiveLaunches() {
   const params = new URLSearchParams({
     explore: '1',
@@ -33,29 +31,26 @@ async function fetchActiveLaunches() {
   return data.active?.items || [];
 }
 
-/**
- * Start scanner - poll Pons API for launches with bonding progress
- */
-export async function startScanner(notifyFn, config) {
+export async function startScanner(notifyFn) {
   if (running) return;
   running = true;
 
-  const pollMs = parseInt(config.scanner_poll_ms || '10000');
-  const thresholdPct = parseFloat(config.bonding_curve_pct || '80');
-
-  await logInfo(`Scanner started (threshold: ${thresholdPct}%)`);
+  await logInfo('Scanner started');
 
   const poll = async () => {
     if (!running) return;
 
     try {
+      // Read config fresh every poll
+      const config = await getAllConfig();
+      const thresholdPct = parseFloat(config.bonding_curve_pct || '80');
+
       const launches = await fetchActiveLaunches();
 
       for (const launch of launches) {
         const token = launch.token.toLowerCase();
         const progress = launch.graduationProgressPct;
 
-        // Skip if already seen or below threshold
         if (seenTokens.has(token)) continue;
         if (progress < thresholdPct) continue;
 
@@ -65,12 +60,10 @@ export async function startScanner(notifyFn, config) {
           continue;
         }
 
-        // Mark as seen
         seenTokens.add(token);
 
         await logInfo(`${launch.symbol} hit ${progress.toFixed(1)}% bonding, running filters...`);
 
-        // Run filters
         const filters = {
           require_social: config.require_social,
           min_holders: config.min_holders,
@@ -82,7 +75,6 @@ export async function startScanner(notifyFn, config) {
           continue;
         }
 
-        // Passed filters - need curve address
         const client = getClient();
         const launchData = await client.readContract({
           address: FACTORY_V2,
@@ -102,6 +94,8 @@ export async function startScanner(notifyFn, config) {
     }
 
     if (running) {
+      const config = await getAllConfig();
+      const pollMs = parseInt(config.scanner_poll_ms || '10000');
       pollTimer = setTimeout(poll, pollMs);
     }
   };

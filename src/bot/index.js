@@ -138,9 +138,8 @@ export async function setupBot() {
   // Auto-start scanner if it was running before
   const scannerState = await getScannerState();
   if (scannerState) {
-    const config = await getAllConfig();
     scannerRunning = true;
-    await startScanner(notifyAdmin, config);
+    await startScanner(notifyAdmin);
     await resumeAllMonitors();
     console.log('[Bot] Scanner auto-started from DB state');
   }
@@ -313,10 +312,9 @@ export async function setupBot() {
       return ctx.reply('⚠️ Scanner already running');
     }
 
-    const config = await getAllConfig();
     scannerRunning = true;
     await setScannerState(true);
-    await startScanner(notifyAdmin, config);
+    await startScanner(notifyAdmin);
     await resumeAllMonitors();
     await logInfo('Scanner started');
     ctx.reply('🚀 Scanner started!');
