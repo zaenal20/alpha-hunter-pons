@@ -1,4 +1,19 @@
 /**
+ * Format date to WIB (UTC+7)
+ */
+function toWIB(date) {
+  const d = new Date(date);
+  d.setHours(d.getHours() + 7);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const month = months[d.getUTCMonth()];
+  const hours = String(d.getUTCHours()).padStart(2, '0');
+  const mins = String(d.getUTCMinutes()).padStart(2, '0');
+  const secs = String(d.getUTCSeconds()).padStart(2, '0');
+  return `${day} ${month}, ${hours}:${mins}:${secs}`;
+}
+
+/**
  * Escape characters for Telegram HTML
  */
 export function htmlEsc(str) {
@@ -392,7 +407,7 @@ export function formatLogsMsg(logs, title) {
   let fallback = `📋 *Last ${logs.length} ${title || 'logs'}*\n\n`;
 
   for (const l of logs) {
-    const time = new Date(l.createdAt).toLocaleTimeString();
+    const time = toWIB(l.createdAt);
     const emoji = levelEmoji[l.level] || '📝';
 
     html +=
