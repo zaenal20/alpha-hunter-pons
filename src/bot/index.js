@@ -439,8 +439,9 @@ export async function setupBot() {
 
   // /clear_logs
   bot.command('clear_logs', async (ctx) => {
-    const deleted = await clearOldLogs(7);
-    ctx.reply(`🗑️ Cleared ${deleted} old logs (older than 7 days)`);
+    const db = getPrisma();
+    const result = await db.log.deleteMany();
+    ctx.reply(`🗑️ Cleared ${result.count} logs`);
   });
 
   // Launch bot
