@@ -41,19 +41,20 @@ export async function startScanner(notifyFn) {
     if (!running) return;
 
     try {
-      // Read config fresh every poll
       const config = await getAllConfig();
-      const thresholdPct = parseFloat(config.bonding_curve_pct || '80');
+      const pollMs = parseInt(config.scanner_poll_ms || '10000');
 
-      // Pause scanner if max positions reached
+      // Check max positions BEFORE API call
       const db = getPrisma();
       const openCount = await db.position.count({ where: { status: 'open' } });
       const maxPositions = parseInt(config.max_open_positions || '5');
       if (openCount >= maxPositions) {
-        // Skip API call, retry next poll
+        // Skip API call, schedule next poll
+        if (running) pollTimer = setTimeout(poll, pollMs);
         return;
       }
 
+      const thresholdPct = parseFloat(config.bonding_curve_pct || '80');
       const launches = await fetchActiveLaunches();
 
       for (const launch of launches) {
@@ -73,7 +74,6 @@ export async function startScanner(notifyFn) {
 
         // No rebuy filter
         if (config.no_rebuy === 'true') {
-          const db = getPrisma();
           const existing = await db.position.findFirst({
             where: { token },
           });
