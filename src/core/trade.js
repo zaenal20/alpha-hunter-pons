@@ -1,18 +1,13 @@
 import { parseEther, formatEther, parseAbi, encodeAbiParameters, keccak256 } from 'viem';
 import { getClient, getWalletClient, CURVE_ABI, ERC20_ABI, POOL_MANAGER_ABI, POOL_MANAGER, MEME_HOOK, FACTORY_V2, FACTORY_V2_ABI } from './chain.js';
+import { logError } from '../utils/logger.js';
 
 const DEFAULT_SLIPPAGE_BPS = 500n; // 5%
 
-/**
- * Apply slippage to a quote amount
- */
 function applySlippage(amount, slippageBps = DEFAULT_SLIPPAGE_BPS) {
   return (amount * (10000n - slippageBps)) / 10000n;
 }
 
-/**
- * Parse CurveBuy event from receipt to get actual tokensOut
- */
 function parseCurveBuyReceipt(receipt) {
   for (const log of receipt.logs) {
     if (log.data && log.data.length >= 194) {
@@ -26,9 +21,6 @@ function parseCurveBuyReceipt(receipt) {
   return 0n;
 }
 
-/**
- * Get price from v2 curve reserves
- */
 export async function getV2Price(curve) {
   const client = getClient();
   const [quoteReserve, tokenReserve] = await client.readContract({
@@ -39,9 +31,6 @@ export async function getV2Price(curve) {
   return Number(quoteReserve) / Number(tokenReserve);
 }
 
-/**
- * Get v2 graduation progress (0..1)
- */
 export async function getV2GraduationProgress(curve) {
   const client = getClient();
   const [raised, threshold] = await Promise.all([
@@ -51,9 +40,6 @@ export async function getV2GraduationProgress(curve) {
   return Number(raised) / Number(threshold);
 }
 
-/**
- * Buy on v2 bonding curve
- */
 export async function buyOnCurve(curve, quoteIn, recipient, dryRun) {
   const quoteInWei = parseEther(quoteIn.toString());
 
@@ -77,9 +63,6 @@ export async function buyOnCurve(curve, quoteIn, recipient, dryRun) {
   return { hash, tokensOut, receipt };
 }
 
-/**
- * Sell on v2 bonding curve
- */
 export async function sellOnCurve(curve, tokensIn, recipient, dryRun) {
   if (dryRun) {
     return { hash: 'DRY_RUN', quoteOut: 0n };
@@ -110,9 +93,6 @@ export async function sellOnCurve(curve, tokensIn, recipient, dryRun) {
   return { hash, quoteOut, receipt };
 }
 
-/**
- * Get token balance for an address
- */
 export async function getTokenBalance(token, address) {
   const client = getClient();
   return client.readContract({
@@ -143,19 +123,30 @@ function buildPoolKey(launch) {
 
 /**
  * Get price from v4 pool (for graduated tokens)
- * Uses extsload on PoolManager to read slot0 directly from storage
- * Pool.STATE_SLOT = 6, slot = keccak256(abi.encode(uint256(poolId),6))
  */
 export async function getV4Price(token) {
   const client = getClient();
 
-  const launch = await client.readContract({
-    address: FACTORY_V2,
-    abi: parseAbi(FACTORY_V2_ABI),
-    functionName: 'getLaunchedToken',
-    args: [token],
-  });
+  // Step 1: Get launch record from factory
+  let launch;
+  try {
+    launch = await client.readContract({
+      address: FACTORY_V2,
+      abi: parseAbi(FACTORY_V2_ABI),
+      functionName: 'getLaunchedToken',
+      args: [token],
+    });
+  } catch (err) {
+    await logError(`[V4Price] factory getLaunchedToken failed for ${token}: ${err.message}`);
+    return null;
+  }
 
+  if (!launch || !launch.exists) {
+    await logError(`[V4Price] token ${token} not found in factory`);
+    return null;
+  }
+
+  // Step 2: Build pool key and compute poolId
   const poolKey = buildPoolKey(launch);
   const poolId = keccak256(
     encodeAbiParameters(
@@ -167,7 +158,7 @@ export async function getV4Price(token) {
     )
   );
 
-  // Storage slot for pool's slot0: keccak256(abi.encode(uint256(poolId), Pool.STATE_SLOT))
+  // Step 3: Compute storage slot (Pool.STATE_SLOT = 6)
   const STATE_SLOT = 6n;
   const storageSlot = keccak256(
     encodeAbiParameters(
@@ -176,17 +167,32 @@ export async function getV4Price(token) {
     )
   );
 
-  const data = await client.readContract({
-    address: POOL_MANAGER,
-    abi: parseAbi(POOL_MANAGER_ABI),
-    functionName: 'extsload',
-    args: [storageSlot],
-  });
+  // Step 4: Read slot0 from PoolManager
+  let data;
+  try {
+    data = await client.readContract({
+      address: POOL_MANAGER,
+      abi: parseAbi(POOL_MANAGER_ABI),
+      functionName: 'extsload',
+      args: [storageSlot],
+    });
+  } catch (err) {
+    await logError(`[V4Price] extsload failed for ${token}: ${err.message}`, {
+      poolId, storageSlot, pairToken: launch.pairToken, poolFee: poolKey.fee, tickSpacing: poolKey.tickSpacing,
+    });
+    return null;
+  }
 
-  // Slot0 packed: sqrtPriceX96 (160 bits lower)
+  // Step 5: Decode sqrtPriceX96
   const sqrtPriceX96 = BigInt(data) & ((1n << 160n) - 1n);
-  if (!sqrtPriceX96 || sqrtPriceX96 === 0n) return null;
+  if (!sqrtPriceX96 || sqrtPriceX96 === 0n) {
+    await logError(`[V4Price] sqrtPriceX96 is zero for ${token}`, {
+      rawData: data, poolId, storageSlot,
+    });
+    return null;
+  }
 
+  // Step 6: Calculate price
   const ratio = Number(sqrtPriceX96) / 2 ** 96;
   const token1PerToken0 = ratio * ratio;
   const isToken0 = launch.pairToken.toLowerCase() > launch.token.toLowerCase();
@@ -211,7 +217,6 @@ export async function sellOnV4(token, tokensIn, recipient, dryRun) {
 
   const poolKey = buildPoolKey(launch);
 
-  // Approve PoolManager
   await walletClient.writeContract({
     address: token,
     abi: parseAbi(ERC20_ABI),
@@ -263,6 +268,7 @@ export async function sellOnV4(token, tokensIn, recipient, dryRun) {
 export async function getCurrentPrice(curve, token) {
   const client = getClient();
 
+  // Step 1: Try curve
   try {
     const [quoteReserve, tokenReserve] = await client.readContract({
       address: curve,
@@ -272,14 +278,24 @@ export async function getCurrentPrice(curve, token) {
 
     const price = Number(quoteReserve) / Number(tokenReserve);
     if (price > 0 && isFinite(price)) return price;
-  } catch {}
 
-  // Fallback: v4 pool (token graduated)
+    // Price invalid (Infinity/NaN) — token likely graduated
+    console.log(`[Price] curve invalid for ${token}, falling back to v4 (reserves: ${quoteReserve}/${tokenReserve})`);
+  } catch (err) {
+    await logError(`[Price] curve error for ${token} (curve: ${curve}): ${err.message}`);
+  }
+
+  // Step 2: Fallback v4
   if (token) {
     try {
       const v4Price = await getV4Price(token);
       if (v4Price && v4Price > 0 && isFinite(v4Price)) return v4Price;
-    } catch {}
+      await logError(`[Price] v4 returned invalid for ${token}: ${v4Price}`);
+    } catch (err) {
+      await logError(`[Price] v4 error for ${token}: ${err.message}`);
+    }
+  } else {
+    await logError(`[Price] no token address for curve ${curve}, cannot fallback`);
   }
 
   return null;
