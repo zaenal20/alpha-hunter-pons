@@ -23,6 +23,7 @@ const DEFAULTS = {
   max_position_minutes: '30',
   only_eth_paired: 'true',
   no_rebuy: 'true',
+  max_dev_hold_pct: '5',
 };
 
 export async function initDefaults() {

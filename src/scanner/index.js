@@ -1,4 +1,4 @@
-import { checkFilters } from './filter.js';
+import { checkFilters, getHoldersData } from './filter.js';
 import { buyToken } from '../trader/buy.js';
 import { getClient, FACTORY_V2, FACTORY_V2_ABI } from '../core/chain.js';
 import { parseAbi } from 'viem';
@@ -85,9 +85,19 @@ export async function startScanner(notifyFn) {
 
         await logInfo(`${launch.symbol} hit ${progress.toFixed(1)}% bonding, running filters...`);
 
+        // Check dev hold + holder count in one API call
+        const maxDevHoldPct = parseFloat(config.max_dev_hold_pct || '5');
+        const { holdersCount, devHoldPct } = await getHoldersData(token, launch.deployer);
+
+        if (devHoldPct > maxDevHoldPct) {
+          await logWarn(`${launch.symbol} dev holds ${devHoldPct.toFixed(1)}% (max: ${maxDevHoldPct}%), skipping`);
+          continue;
+        }
+
         const filters = {
           require_social: config.require_social,
           min_holders: config.min_holders,
+          _holdersCount: holdersCount, // reuse fetched data
         };
 
         const result = await checkFilters(token, filters);

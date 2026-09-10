@@ -47,12 +47,25 @@ export async function getTokenMeta(token) {
 }
 
 /**
- * Get holder count from Pons API
+ * Get holders data from Pons API (holder count + dev hold %)
  */
-export async function getHolderCount(token) {
+export async function getHoldersData(token, deployer) {
   const res = await fetch(`https://www.ponsfamily.com/api/pons-v2-market/${token}/holders`);
   const data = await res.json();
-  return data.holdersCount || 0;
+
+  const holdersCount = data.holdersCount || 0;
+  let devHoldPct = 0;
+
+  if (deployer && data.holders) {
+    const devHolder = data.holders.find(
+      h => h.address.toLowerCase() === deployer.toLowerCase()
+    );
+    if (devHolder) {
+      devHoldPct = devHolder.percentage || 0;
+    }
+  }
+
+  return { holdersCount, devHoldPct };
 }
 
 /**
@@ -69,16 +82,12 @@ export async function checkFilters(token, filters) {
     }
   }
 
-  // Holder count
+  // Holder count (reuse fetched data if available)
   const minHolders = parseInt(filters.min_holders || '0');
   if (minHolders > 0) {
-    try {
-      const holderCount = await getHolderCount(token);
-      if (holderCount < minHolders) {
-        return { pass: false, reason: `Only ${holderCount} holders (min: ${minHolders})`, meta };
-      }
-    } catch (err) {
-      console.log(`[Filter] Could not count holders for ${token}: ${err.message}`);
+    const holderCount = filters._holdersCount ?? 0;
+    if (holderCount < minHolders) {
+      return { pass: false, reason: `Only ${holderCount} holders (min: ${minHolders})`, meta };
     }
   }
 

@@ -201,6 +201,7 @@ export async function setupBot() {
       `<tr><td><b>max_position_minutes</b></td><td align="right">30</td><td><code>/set max_position_minutes</code></td></tr>` +
       `<tr><td><b>only_eth_paired</b></td><td align="right">true</td><td><code>/set only_eth_paired</code></td></tr>` +
       `<tr><td><b>no_rebuy</b></td><td align="right">true</td><td><code>/set no_rebuy</code></td></tr>` +
+      `<tr><td><b>max_dev_hold_pct</b></td><td align="right">5</td><td><code>/set max_dev_hold_pct</code></td></tr>` +
       `</table>` +
       `<p><i>Example: /set buy_amount_eth 0.05</i></p>`;
 
@@ -216,7 +217,8 @@ export async function setupBot() {
       `monitor_poll_ms (3000)\n` +
       `max_open_positions (5)\n` +
       `only_eth_paired (true)\n` +
-      `no_rebuy (true)\n\n` +
+      `no_rebuy (true)\n` +
+      `max_dev_hold_pct (5)\n\n` +
       `Example: /set buy_amount_eth 0.05`;
 
     sendRichMessage(html, fallback);
@@ -242,7 +244,7 @@ export async function setupBot() {
     const validKeys = [
       'bonding_curve_pct', 'min_holders', 'require_social',
       'buy_amount_eth', 'main_stoploss_pct', 'trailing_stoploss_pct',
-      'scanner_poll_ms', 'monitor_poll_ms', 'max_open_positions', 'max_position_minutes', 'only_eth_paired', 'no_rebuy',
+      'scanner_poll_ms', 'monitor_poll_ms', 'max_open_positions', 'max_position_minutes', 'only_eth_paired', 'no_rebuy', 'max_dev_hold_pct',
     ];
 
     if (!validKeys.includes(key)) {
