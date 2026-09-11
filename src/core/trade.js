@@ -186,9 +186,7 @@ export async function getV4Price(token) {
   // Step 5: Decode sqrtPriceX96
   const sqrtPriceX96 = BigInt(data) & ((1n << 160n) - 1n);
   if (!sqrtPriceX96 || sqrtPriceX96 === 0n) {
-    await logError(`[V4Price] sqrtPriceX96 is zero for ${token}`, {
-      rawData: data, poolId, storageSlot,
-    });
+    console.log(`[V4Price] pool not initialized for ${token} (sqrtPriceX96=0), graduated but no liquidity yet`);
     return null;
   }
 

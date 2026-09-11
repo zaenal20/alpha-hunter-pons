@@ -268,7 +268,7 @@ export async function setupBot() {
     const prices = {};
     for (const p of positions) {
       try {
-        prices[p.id] = await getCurrentPrice(p.curve);
+        prices[p.id] = await getCurrentPrice(p.curve, p.token);
       } catch {
         prices[p.id] = null;
       }
