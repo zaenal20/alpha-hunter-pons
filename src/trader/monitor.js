@@ -12,10 +12,6 @@ export async function startPriceMonitor(positionId, token, curve) {
 
   const poll = async () => {
     try {
-      // Read config fresh every poll
-      const trailingPct = parseFloat((await getConfig('trailing_stoploss_pct')) || '15');
-      const maxMinutes = parseFloat((await getConfig('max_position_minutes')) || '30');
-
       const db = getPrisma();
       const position = await db.position.findUnique({ where: { id: positionId } });
       if (!position || position.status !== 'open') {
@@ -23,48 +19,57 @@ export async function startPriceMonitor(positionId, token, curve) {
         return;
       }
 
-      const currentPrice = await getCurrentPrice(curve, token);
-      if (!currentPrice || currentPrice <= 0) return;
-
-      // --- Max Position Time ---
+      // --- Max Position Time (independent of price) ---
+      const maxMinutes = parseFloat((await getConfig('max_position_minutes')) || '30');
       const ageMinutes = (Date.now() - new Date(position.createdAt).getTime()) / 60000;
       if (ageMinutes >= maxMinutes) {
         await sellToken(positionId, `Max position time reached (${maxMinutes}m)`);
+        // Don't schedule next poll - position is sold
         return;
       }
 
-      // --- Main Stoploss ---
-      if (position.mainStoploss && currentPrice <= position.mainStoploss) {
-        await sellToken(positionId, `Main stoploss hit (${position.mainStoploss.toFixed(12)})`);
-        return;
-      }
+      // --- Get price (may return null for graduated tokens) ---
+      const currentPrice = await getCurrentPrice(curve, token);
 
-      // --- Trailing Stop ---
-      if (currentPrice > (position.trailingHigh || 0)) {
-        const newTrailingStop = currentPrice * (1 - trailingPct / 100);
+      // If price available, check SL and trailing
+      if (currentPrice && currentPrice > 0) {
+        const trailingPct = parseFloat((await getConfig('trailing_stoploss_pct')) || '15');
 
-        await db.position.update({
-          where: { id: positionId },
-          data: { trailingHigh: currentPrice, trailingStop: newTrailingStop },
-        });
+        // --- Main Stoploss ---
+        if (position.mainStoploss && currentPrice <= position.mainStoploss) {
+          await sellToken(positionId, `Main stoploss hit (${position.mainStoploss.toFixed(12)})`);
+          return;
+        }
 
-        const gainPct = position.buyPrice > 0
-          ? ((currentPrice - position.buyPrice) / position.buyPrice) * 100
-          : 0;
+        // --- Trailing Stop ---
+        if (currentPrice > (position.trailingHigh || 0)) {
+          const newTrailingStop = currentPrice * (1 - trailingPct / 100);
 
-        if (gainPct > 5) {
-          await logInfo(`New high for #${positionId}: ${currentPrice.toFixed(12)} ETH (+${gainPct.toFixed(2)}%)`);
+          await db.position.update({
+            where: { id: positionId },
+            data: { trailingHigh: currentPrice, trailingStop: newTrailingStop },
+          });
+
+          const gainPct = position.buyPrice > 0
+            ? ((currentPrice - position.buyPrice) / position.buyPrice) * 100
+            : 0;
+
+          if (gainPct > 5) {
+            await logInfo(`New high for #${positionId}: ${currentPrice.toFixed(12)} ETH (+${gainPct.toFixed(2)}%)`);
+          }
+        }
+
+        if (position.trailingStop && currentPrice <= position.trailingStop) {
+          await sellToken(positionId, `Trailing stoploss hit (${position.trailingStop.toFixed(12)})`);
+          return;
         }
       }
-
-      if (position.trailingStop && currentPrice <= position.trailingStop) {
-        await sellToken(positionId, `Trailing stoploss hit (${position.trailingStop.toFixed(12)})`);
-        return;
-      }
+      // If price is null, skip SL/trailing checks but keep polling
     } catch (err) {
       await logError(`Monitor error for #${positionId}: ${err.message}`);
     }
 
+    // Always schedule next poll (unless position was sold above)
     if (activeMonitors.has(positionId)) {
       const pollMs = parseInt((await getConfig('monitor_poll_ms')) || '3000');
       activeMonitors.set(positionId, setTimeout(poll, pollMs));
