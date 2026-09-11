@@ -194,7 +194,8 @@ export async function setupBot() {
       `<tr><td><b>require_social</b></td><td align="right">true</td><td><code>/set require_social</code></td></tr>` +
       `<tr><td><b>buy_amount_eth</b></td><td align="right">0.01</td><td><code>/set buy_amount_eth</code></td></tr>` +
       `<tr><td><b>main_stoploss_pct</b></td><td align="right">30</td><td><code>/set main_stoploss_pct</code></td></tr>` +
-      `<tr><td><b>trailing_stoploss_pct</b></td><td align="right">15</td><td><code>/set trailing_stoploss_pct</code></td></tr>` +
+      `<tr><td><b>trailing_activation_pct</b></td><td align="right">10</td><td><code>/set trailing_activation_pct</code></td></tr>` +
+      `<tr><td><b>trailing_stoploss_pct</b></td><td align="right">5</td><td><code>/set trailing_stoploss_pct</code></td></tr>` +
       `<tr><td><b>scanner_poll_ms</b></td><td align="right">10000</td><td><code>/set scanner_poll_ms</code></td></tr>` +
       `<tr><td><b>monitor_poll_ms</b></td><td align="right">3000</td><td><code>/set monitor_poll_ms</code></td></tr>` +
       `<tr><td><b>max_open_positions</b></td><td align="right">5</td><td><code>/set max_open_positions</code></td></tr>` +
@@ -212,7 +213,8 @@ export async function setupBot() {
       `require_social (true)\n` +
       `buy_amount_eth (0.01)\n` +
       `main_stoploss_pct (30)\n` +
-      `trailing_stoploss_pct (15)\n` +
+      `trailing_activation_pct (10)\n` +
+      `trailing_stoploss_pct (5)\n` +
       `scanner_poll_ms (10000)\n` +
       `monitor_poll_ms (3000)\n` +
       `max_open_positions (5)\n` +
@@ -243,7 +245,7 @@ export async function setupBot() {
 
     const validKeys = [
       'bonding_curve_pct', 'min_holders', 'require_social',
-      'buy_amount_eth', 'main_stoploss_pct', 'trailing_stoploss_pct',
+      'buy_amount_eth', 'main_stoploss_pct', 'trailing_activation_pct', 'trailing_stoploss_pct',
       'scanner_poll_ms', 'monitor_poll_ms', 'max_open_positions', 'max_position_minutes', 'only_eth_paired', 'no_rebuy', 'max_dev_hold_pct',
     ];
 

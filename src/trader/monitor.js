@@ -33,7 +33,8 @@ export async function startPriceMonitor(positionId, token, curve) {
 
       // If price available, check SL and trailing
       if (currentPrice && currentPrice > 0) {
-        const trailingPct = parseFloat((await getConfig('trailing_stoploss_pct')) || '15');
+        const trailingActivationPct = parseFloat((await getConfig('trailing_activation_pct')) || '10');
+        const trailingPct = parseFloat((await getConfig('trailing_stoploss_pct')) || '5');
 
         // --- Main Stoploss ---
         if (position.mainStoploss && currentPrice <= position.mainStoploss) {
@@ -41,27 +42,28 @@ export async function startPriceMonitor(positionId, token, curve) {
           return;
         }
 
-        // --- Trailing Stop ---
-        if (currentPrice > (position.trailingHigh || 0)) {
-          const newTrailingStop = currentPrice * (1 - trailingPct / 100);
+        // --- Trailing Stop (only activates at profit) ---
+        const gainPct = position.buyPrice > 0
+          ? ((currentPrice - position.buyPrice) / position.buyPrice) * 100
+          : 0;
 
-          await db.position.update({
-            where: { id: positionId },
-            data: { trailingHigh: currentPrice, trailingStop: newTrailingStop },
-          });
+        // Only start trailing after reaching activation threshold
+        if (gainPct >= trailingActivationPct) {
+          if (currentPrice > (position.trailingHigh || 0)) {
+            const newTrailingStop = currentPrice * (1 - trailingPct / 100);
 
-          const gainPct = position.buyPrice > 0
-            ? ((currentPrice - position.buyPrice) / position.buyPrice) * 100
-            : 0;
+            await db.position.update({
+              where: { id: positionId },
+              data: { trailingHigh: currentPrice, trailingStop: newTrailingStop },
+            });
 
-          if (gainPct > 5) {
             await logInfo(`New high for #${positionId}: ${currentPrice.toFixed(12)} ETH (+${gainPct.toFixed(2)}%)`);
           }
-        }
 
-        if (position.trailingStop && currentPrice <= position.trailingStop) {
-          await sellToken(positionId, `Trailing stoploss hit (${position.trailingStop.toFixed(12)})`);
-          return;
+          if (position.trailingStop && currentPrice <= position.trailingStop) {
+            await sellToken(positionId, `Trailing stoploss hit (${position.trailingStop.toFixed(12)})`);
+            return;
+          }
         }
       }
       // If price is null, skip SL/trailing checks but keep polling

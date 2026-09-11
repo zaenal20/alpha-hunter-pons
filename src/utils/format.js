@@ -297,7 +297,7 @@ export function formatHistoryMsg(positions) {
 export function formatConfigMsg(config, dryRun) {
   const categories = {
     '🔍 Filter': ['bonding_curve_pct', 'min_holders', 'require_social', 'only_eth_paired', 'no_rebuy', 'max_dev_hold_pct'],
-    '💰 Trade': ['buy_amount_eth', 'main_stoploss_pct', 'trailing_stoploss_pct', 'max_open_positions', 'max_position_minutes'],
+    '💰 Trade': ['buy_amount_eth', 'main_stoploss_pct', 'trailing_activation_pct', 'trailing_stoploss_pct', 'max_open_positions', 'max_position_minutes'],
     '⚙️ System': ['scanner_poll_ms', 'monitor_poll_ms'],
   };
 
